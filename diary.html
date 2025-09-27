@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>My Diary</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <h2>My Diary</h2>
+    <button id="logoutBtn" class="danger">Logout</button>
+  </header>
+
+  <div class="container">
+    <textarea id="entryContent" placeholder="Write your diary entry..."></textarea>
+    <button id="saveEntry">Save Entry</button>
+
+    <input id="search" type="text" placeholder="Search entries...">
+
+    <ul id="entriesList"></ul>
+  </div>
+
+  <script type="module">
+    import { auth, db } from "./firebase.js";
+    import { onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+    import { collection, addDoc, getDocs, deleteDoc, doc, query, orderBy } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+
+    const saveBtn = document.getElementById("saveEntry");
+    const list = document.getElementById("entriesList");
+    const searchInput = document.getElementById("search");
+    const logoutBtn = document.getElementById("logoutBtn");
+
+    let userId = null;
+    let allEntries = [];
+
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        window.location.href = "login.html";
+        return;
+      }
+      userId = user.uid;
+      loadEntries();
+    });
+
+    saveBtn.addEventListener("click", async () => {
+      const content = document.getElementById("entryContent").value;
+      if (!content.trim()) return;
+
+      await addDoc(collection(db, "users", userId, "entries"), {
+        content,
+        createdAt: new Date()
+      });
+
+      document.getElementById("entryContent").value = "";
+      loadEntries();
+    });
+
+    async function loadEntries() {
+      list.innerHTML = "";
+      const q = query(collection(db, "users", userId, "entries"), orderBy("createdAt", "desc"));
+      const snapshot = await getDocs(q);
+
+      allEntries = [];
+      snapshot.forEach((docSnap) => {
+        allEntries.push({ id: docSnap.id, ...docSnap.data() });
+      });
+
+      renderEntries(allEntries);
+    }
+
+    function renderEntries(entries) {
+      list.innerHTML = "";
+      entries.forEach((entry) => {
+        const li = document.createElement("li");
+        li.innerHTML = `
+          <span>${entry.content}</span>
+          <button class="deleteBtn danger" data-id="${entry.id}">Delete</button>
+        `;
+        list.appendChild(li);
+      });
+
+      document.querySelectorAll(".deleteBtn").forEach(btn => {
+        btn.addEventListener("click", async (e) => {
+          const id = e.target.getAttribute("data-id");
+          await deleteDoc(doc(db, "users", userId, "entries", id));
+          loadEntries();
+        });
+      });
+    }
+
+    searchInput.addEventListener("input", (e) => {
+      const term = e.target.value.toLowerCase();
+      const filtered = allEntries.filter(entry => entry.content.toLowerCase().includes(term));
+      renderEntries(filtered);
+    });
+
+    logoutBtn.addEventListener("click", async () => {
+      await signOut(auth);
+      window.location.href = "login.html";
+    });
+  </script>
+</body>
+</html>
